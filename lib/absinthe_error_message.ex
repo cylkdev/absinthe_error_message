@@ -126,6 +126,14 @@ defmodule AbsintheErrorMessage do
       ...>   {:error, %{code: :not_found, message: "message", details: %{params: %{id: 1}}}}
       ...> )
       {:error, %AbsintheErrorMessage.TopLevelMessage{message: "message", extensions: %{code: :not_found, params: %{id: 1}}}}
+
+      iex> AbsintheErrorMessage.handle_error_response(
+      ...>   fn error ->
+      ...>     AbsintheErrorMessage.TopLevelMessage.create(error.code, error.message, error.details)
+      ...>   end,
+      ...>   fn -> {:error, %{code: :not_found, message: "message", details: %{params: %{id: 1}}}} end
+      ...> )
+      {:error, %AbsintheErrorMessage.TopLevelMessage{message: "message", extensions: %{code: :not_found, params: %{id: 1}}}}
   """
   @spec handle_error_response(params(), {:error, term()} | {:ok, term()} | function()) ::
     {:error, TopLevelMessage.t() | FieldLevelMessage.t()} | {:ok, term()}
