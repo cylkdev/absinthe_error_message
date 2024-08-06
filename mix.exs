@@ -41,11 +41,11 @@ defmodule AbsintheErrorMessage.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:ex_doc, "~> 0.1"},
+      {:ex_doc, "~> 0.1 or ~> 0.2", only: :dev, runtime: false},
       {:excoveralls, "~> 0.14.6", only: :test, runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
 
-      {:error_message_shorts, path: "../error_message_shorts"},
+      {:error_message_shorts, git: "https://github.com/cylkdev/error_message_shorts.git", branch: "main"},
       {:absinthe, "~> 1.7"}
     ]
   end

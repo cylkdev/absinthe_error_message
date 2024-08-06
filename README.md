@@ -91,7 +91,7 @@ by adding `error_message` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:error_message, "~> 0.1.0"}
+    {:absinthe_error_message, "~> 0.1.0"}
   ]
 end
 ```

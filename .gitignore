@@ -24,3 +24,7 @@ absinthe_error_message-*.tar
 
 # Temporary files, for example, from tests.
 /tmp/
+
+/dialyzer/*
+
+.elixir_ls
