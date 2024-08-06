@@ -81,10 +81,10 @@ defmodule AbsintheErrorMessage.Middleware do
       field_level_messages
     } = reduce_to_messages(errors, resolution, opts)
 
-    errors = TopLevelMessage.to_jsonable_map(top_level_messages)
-    value = error_payload(value, field_level_messages, opts)
-
-    %{resolution | errors: errors, value: value}
+    case TopLevelMessage.to_jsonable_map(top_level_messages) do
+      [] -> %{resolution | errors: [], value: error_payload(value, field_level_messages, opts)}
+      errors -> %{resolution | errors: errors, value: nil}
+    end
   end
 
   @doc false

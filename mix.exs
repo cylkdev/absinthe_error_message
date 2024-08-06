@@ -46,7 +46,7 @@ defmodule AbsintheErrorMessage.MixProject do
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
 
       {:error_message_shorts, git: "https://github.com/cylkdev/error_message_shorts.git", branch: "main"},
-      {:absinthe, "~> 1.7"}
+      {:absinthe, "~> 1.0"}
     ]
   end
 

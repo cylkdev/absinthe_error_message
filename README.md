@@ -77,6 +77,58 @@ In a query the field-level message appears as in the errors array at the top lev
 
 In summary Top-level messages pertain to the entire operation, while field-level messages pertain to specific fields within the operation. Top-level messages are found directly within the root errors array, while field-level messages can also reference specific paths (fields) in the GraphQL schema.
 
+## Usage
+
+```elixir
+AbsintheErrorMessage.change(
+  %{
+    code: :bad_request,
+    message: "not a string representation of an integer",
+    details: %{}
+  },
+  %{
+    code: %{bad_request: :internal_server_error},
+    message: %{~r|^not a string representation.*| => %{=~: "one or more arguments are invalid"}}
+  },
+  %{code: :internal_server_error},
+  fn error ->
+    AbsintheErrorMessage.TopLevelMessage.create(error.code, error.message, error.details)
+  end
+)
+```
+
+```elixir
+defmodule SharedAbsintheErrorMessages.Global do
+  def shared_handler do
+  [
+      %{
+        code: %{bad_request: :internal_server_error},
+        message: %{~r|^not a string representation.*| => %{=~: "one or more arguments are invalid"}}
+      },
+      %{code: :internal_server_error}
+    ]
+  end
+end
+defmodule SharedAbsintheErrorMessages.ExampleWebHandler do
+  @error_handler SharedAbsintheErrorMessages.Global.shared_handler() ++ [
+    %{
+      code: %{bad_request: :internal_server_error},
+      message: %{~r|^not a string representation.*| => %{=~: "one or more arguments are invalid"}}
+    },
+    %{code: :internal_server_error}
+  ]
+
+  def update_user(func) do
+    AbsintheErrorMessage.handle_error_response(@error_handler, func)
+  end
+end
+defmodule YourApp.Resolver do
+  def update_user do
+    SharedAbsintheErrorMessages.ExampleWebHandler
+  end
+end
+```
+
 ### References
 
 * [GraphQL Spec](https://spec.graphql.org/)
