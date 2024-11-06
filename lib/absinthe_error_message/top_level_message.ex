@@ -4,34 +4,35 @@ defmodule AbsintheErrorMessage.TopLevelMessage do
   """
   alias AbsintheErrorMessage.Serializer
 
-  @type t :: %__MODULE__{
-    message: binary() | nil,
-    extensions: map() | nil
-  }
-
-  @type t_map :: %{
-    message: binary() | nil,
-    extensions: map() | nil
-  }
-
+  @type code :: atom()
+  @type message :: binary()
+  @type extensions :: map()
   @type attrs :: map() | keyword()
+  @type error_message :: ErrorMessageShorts.error_message()
+
+  @type t :: %__MODULE__{message: message() | nil, extensions: extensions() | nil}
+
+  @type t_map :: %{message: message() | nil, extensions: extensions() | nil}
 
   @enforce_keys [:message]
-  defstruct @enforce_keys ++ [extensions: %{}]
+
+  defstruct @enforce_keys ++ [
+    extensions: %{}
+  ]
 
   @doc """
   Returns a struct
 
   ### Examples
 
-      iex> AbsintheErrorMessage.TopLevelMessage.create(message: "an unexpected error occurred", extensions: %{code: :internal_server_error})
+      iex> AbsintheErrorMessage.TopLevelMessage.create_struct(message: "an unexpected error occurred", extensions: %{code: :internal_server_error})
       %AbsintheErrorMessage.TopLevelMessage{
         message: "an unexpected error occurred",
         extensions: %{code: :internal_server_error}
       }
   """
-  @spec create(attrs()) :: t()
-  def create(attrs), do: struct!(__MODULE__, attrs)
+  @spec create_struct(attrs()) :: t()
+  def create_struct(attrs), do: struct!(__MODULE__, attrs)
 
   @doc """
   Returns a struct.
@@ -47,8 +48,16 @@ defmodule AbsintheErrorMessage.TopLevelMessage do
       iex> AbsintheErrorMessage.TopLevelMessage.create(:not_found, "no records found")
       %AbsintheErrorMessage.TopLevelMessage{message: "no records found", extensions: %{code: :not_found}}
   """
-  @spec create(atom(), binary(), nil | map()) :: t()
-  def create(code, message, extensions) do
+  @spec create(
+    code :: code(),
+    message :: message(),
+    extensions :: extensions() | nil
+  ) :: t()
+  @spec create(
+    code :: code(),
+    message :: message()
+  ) :: t()
+  def create(code, message, extensions \\ nil) do
     extensions =
       if extensions do
         Map.put(extensions, :code, code)
@@ -56,20 +65,43 @@ defmodule AbsintheErrorMessage.TopLevelMessage do
         %{code: code}
       end
 
-    create(message: message, extensions: extensions)
+    create_struct(message: message, extensions: extensions)
   end
 
   @doc """
-  See `&create/3` for documentation.
+  Converts a error message to a top level message.
 
   ### Examples
 
-      iex> AbsintheErrorMessage.TopLevelMessage.create(:not_found, "no records found")
-      %AbsintheErrorMessage.TopLevelMessage{message: "no records found", extensions: %{code: :not_found}}
+      iex> AbsintheErrorMessage.TopLevelMessage.convert_to_message(%{message: "no records found."})
+      %AbsintheErrorMessage.TopLevelMessage{
+        message: "no records found.",
+        extensions: %{code: :internal_server_error}
+      }
+
+      iex> AbsintheErrorMessage.TopLevelMessage.convert_to_message(%{code: :not_found, message: "no records found."})
+      %AbsintheErrorMessage.TopLevelMessage{
+        message: "no records found.",
+        extensions: %{code: :not_found}
+      }
+
+      iex> AbsintheErrorMessage.TopLevelMessage.convert_to_message(%{code: :not_found, message: "no records found.", details: %{request_id: "request_id"}})
+      %AbsintheErrorMessage.TopLevelMessage{
+        message: "no records found.",
+        extensions: %{code: :not_found, request_id: "request_id"}
+      }
+
+      iex> AbsintheErrorMessage.TopLevelMessage.convert_to_message("no records found.")
+      %AbsintheErrorMessage.TopLevelMessage{
+        message: "no records found.",
+        extensions: %{code: :internal_server_error}
+      }
   """
-  @spec create(atom(), binary()) :: t()
-  def create(code, message) do
-    create(code, message, nil)
+  @spec convert_to_message(error_message :: error_message()) :: AbsintheErrorMessage.TopLevelMessage.t()
+  def convert_to_message(error_message) do
+    error_message = ErrorMessageShorts.validate!(error_message)
+
+    create(error_message.code, error_message.message, error_message.details)
   end
 
   @doc """
@@ -102,23 +134,18 @@ defmodule AbsintheErrorMessage.TopLevelMessage do
 
   @spec to_jsonable_map(t()) :: t_map()
   def to_jsonable_map(%__MODULE__{extensions: extensions} = state) do
-    state =
-      state
-      |> Map.from_struct()
-      |> Serializer.to_jsonable_map()
-
-    timestamp = DateTime.to_string(DateTime.utc_now())
+    state = state |> Map.from_struct() |> Serializer.to_jsonable_map()
 
     extensions =
       (extensions || %{})
-      |> upcase_code()
+      |> upcase_extensions_code()
       |> Map.put(:request_id, Logger.metadata()[:request_id])
-      |> Map.put_new(:timestamp, timestamp)
+      |> Map.put_new(:timestamp, DateTime.to_string(DateTime.utc_now()))
 
     %{state | extensions: extensions}
   end
 
-  defp upcase_code(extensions) do
+  defp upcase_extensions_code(extensions) do
     case Map.get(extensions, :code) do
       nil -> extensions
       code -> Map.put(extensions, :code, upcase(code))

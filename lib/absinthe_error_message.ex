@@ -6,138 +6,73 @@ defmodule AbsintheErrorMessage do
     TopLevelMessage
   }
 
-  @type error_message :: ErrorMessageShorts.error_message()
-  @type params :: map() | list()
-  @type replacement :: function() | term()
+  @type schema :: map()
+  @type replacement :: function() | any()
+  @type schema_replacement :: {schema(), replacement()}
+  @type change_params :: schema() | schema_replacement() | list(schema() | schema_replacement())
   @type options :: keyword()
 
+  @type error_message :: ErrorMessageShorts.error_message()
+
   @doc """
-  Transforms the `code`, `message`, and `details` then change_params the result into a graphql error message.
-
-  ### Examples
-
-      iex> AbsintheErrorMessage.change(
-      ...>   %{code: :not_found, message: "no records found"},
-      ...>   [],
-      ...>   %{code: :not_found},
-      ...>   %AbsintheErrorMessage.TopLevelMessage{message: "service currently unavailable", extensions: %{code: :service_unavailable}}
-      ...> )
-      %AbsintheErrorMessage.TopLevelMessage{message: "service currently unavailable", extensions: %{code: :service_unavailable}}
-
-      iex> AbsintheErrorMessage.change(
-      ...>   %{code: :not_found, message: "no records found"},
-      ...>   %{message: %{"no records" => %{=~: "service currently unavailable"}}},
-      ...>   %{code: :not_found},
-      ...>   fn error_message -> %AbsintheErrorMessage.TopLevelMessage{message: error_message.message, extensions: %{code: :service_unavailable}} end
-      ...> )
-      %AbsintheErrorMessage.TopLevelMessage{message: "service currently unavailable", extensions: %{code: :service_unavailable}}
+  ...
   """
-  @spec change(term(), params(), params(), replacement()) :: FieldLevelMessage.t() | TopLevelMessage.t()
-  def change(term, change_params, match_params, replacement) do
-    term
-    |> ErrorMessageShorts.change(change_params)
-    |> ErrorMessageShorts.change(match_params, replacement)
+  @spec handle_error(
+    response :: {:error, error_message() | list(error_message())} | {:ok, any()},
+    change_params :: change_params(),
+    options :: keyword()
+  ) :: {:error, FieldLevelMessage.t() | TopLevelMessage.t()}
+  @spec handle_error(
+    response :: {:error, error_message() | list(error_message())} | {:ok, any()},
+    change_params :: change_params()
+  ) :: {:error, FieldLevelMessage.t() | TopLevelMessage.t()}
+  def handle_error(response, change_params, options \\ [])
+
+  def handle_error({:error, error_message}, change_params, options) do
+    {:error, convert_to_message(error_message, change_params, options)}
+  end
+
+  def handle_error({:ok, _} = response, _change_params, _options) do
+    response
   end
 
   @doc """
-  See `&AbsintheErrorMessage.change/4` for more information.
-
-  ### Examples
-
-      iex> AbsintheErrorMessage.change(%{code: :not_found, message: "no records found"}, %{code: :not_found}, %AbsintheErrorMessage.TopLevelMessage{message: "service currently unavailable", extensions: %{code: :service_unavailable}})
-      %AbsintheErrorMessage.TopLevelMessage{message: "service currently unavailable", extensions: %{code: :service_unavailable}}
-
-      iex> AbsintheErrorMessage.change(%{code: :not_found, message: "no records found"}, [%{code: :not_found}], %AbsintheErrorMessage.TopLevelMessage{message: "service currently unavailable", extensions: %{code: :service_unavailable}})
-      %AbsintheErrorMessage.TopLevelMessage{message: "service currently unavailable", extensions: %{code: :service_unavailable}}
+  Transforms the `code`, `message`, and `details` then
+  change_params the result into a graphql error message.
   """
-  @spec change(term(), params(), replacement()) :: FieldLevelMessage.t() | TopLevelMessage.t()
-  def change(term, params, replacement) do
-    params
-    |> List.wrap()
-    |> Enum.reduce(term, fn
-      {change_params, match_params}, term -> change(term, change_params, match_params, replacement)
-      match_params, term -> change(term, [], match_params, replacement)
-    end)
+  @spec convert_to_message(
+    error_message :: error_message() | list(error_message()),
+    change_params :: change_params(),
+    options :: options()
+  ) :: FieldLevelMessage.t() | TopLevelMessage.t() | list(FieldLevelMessage.t() | TopLevelMessage.t())
+  @spec convert_to_message(
+    error_message :: error_message() | list(error_message()),
+    change_params :: change_params()
+  ) :: FieldLevelMessage.t() | TopLevelMessage.t() | list(FieldLevelMessage.t() | TopLevelMessage.t())
+  def convert_to_message(error_message, change_params, options \\ [])
+
+  def convert_to_message(error_messages, change_params, options) when is_list(error_messages) do
+    Enum.map(error_messages, &convert_to_message(&1, change_params, options))
   end
 
-  @doc """
-  See `&AbsintheErrorMessage.change/4` for more information.
-
-  ### Examples
-
-      iex> AbsintheErrorMessage.change(%{code: :not_found, message: "no records found"}, %AbsintheErrorMessage.TopLevelMessage{message: "service currently unavailable", extensions: %{code: :service_unavailable}})
-      %AbsintheErrorMessage.TopLevelMessage{message: "service currently unavailable", extensions: %{code: :service_unavailable}}
-
-      iex> AbsintheErrorMessage.change(
-      ...>   %{code: :not_found, message: "no records found"},
-      ...>   {
-      ...>     %{code: :not_found},
-      ...>     %AbsintheErrorMessage.TopLevelMessage{message: "service currently unavailable", extensions: %{code: :service_unavailable}}
-      ...>   }
-      ...> )
-      %AbsintheErrorMessage.TopLevelMessage{message: "service currently unavailable", extensions: %{code: :service_unavailable}}
-
-      iex> AbsintheErrorMessage.change(
-      ...>   %{code: :not_found, message: "no records found"},
-      ...>   [
-      ...>     {
-      ...>       %{code: :not_found},
-      ...>       %AbsintheErrorMessage.TopLevelMessage{message: "service currently unavailable", extensions: %{code: :service_unavailable}}
-      ...>     }
-      ...>   ]
-      ...> )
-      %AbsintheErrorMessage.TopLevelMessage{message: "service currently unavailable", extensions: %{code: :service_unavailable}}
-
-      iex> AbsintheErrorMessage.change(
-      ...>   %{code: :not_found, message: "no records found"},
-      ...>   [
-      ...>     {
-      ...>       %{message: %{"no records found" => "replaced message"}},
-      ...>       %{code: :not_found},
-      ...>       fn %{message: message} ->
-      ...>         %AbsintheErrorMessage.TopLevelMessage{message: message, extensions: %{code: :service_unavailable}}
-      ...>       end
-      ...>     }
-      ...>   ]
-      ...> )
-      %AbsintheErrorMessage.TopLevelMessage{message: "replaced message", extensions: %{code: :service_unavailable}}
-  """
-  @spec change(term(), params() | list()) :: FieldLevelMessage.t() | TopLevelMessage.t()
-  def change(term, params) do
-    params
-    |> List.wrap()
-    |> Enum.reduce(term, fn
-      {change_params, match_params, replacement}, term -> change(term, change_params, match_params, replacement)
-      {match_params, replacement}, term -> change(term, [], match_params, replacement)
-      replacement, term -> change(term, [], [:*], replacement)
-    end)
+  def convert_to_message(error_message, change_params, options) do
+    error_message
+    |> ErrorMessageShorts.change(change_params, options)
+    |> ensure_message!()
   end
 
-  @doc """
-  This function is simple wrapper function that calls `change/2`
-  on the `term` in an error status tuple `{:error, term()}`.
+  defp ensure_message!(%TopLevelMessage{} = message), do: message
+  defp ensure_message!(%FieldLevelMessage{} = message), do: message
+  defp ensure_message!(term) do
+    raise """
+    Expected one of:
 
-  ### Examples
+    * `AbsintheErrorMessage.TopLevelMessage` struct
+    * `AbsintheErrorMessage.FieldLevelMessage` struct
 
-      iex> AbsintheErrorMessage.handle_error_response(
-      ...>   fn error ->
-      ...>     AbsintheErrorMessage.TopLevelMessage.create(error.code, error.message, error.details)
-      ...>   end,
-      ...>   {:error, %{code: :not_found, message: "message", details: %{params: %{id: 1}}}}
-      ...> )
-      {:error, %AbsintheErrorMessage.TopLevelMessage{message: "message", extensions: %{code: :not_found, params: %{id: 1}}}}
+    got:
 
-      iex> AbsintheErrorMessage.handle_error_response(
-      ...>   fn error ->
-      ...>     AbsintheErrorMessage.TopLevelMessage.create(error.code, error.message, error.details)
-      ...>   end,
-      ...>   fn -> {:error, %{code: :not_found, message: "message", details: %{params: %{id: 1}}}} end
-      ...> )
-      {:error, %AbsintheErrorMessage.TopLevelMessage{message: "message", extensions: %{code: :not_found, params: %{id: 1}}}}
-  """
-  @spec handle_error_response(params(), {:error, term()} | {:ok, term()} | function()) ::
-    {:error, TopLevelMessage.t() | FieldLevelMessage.t()} | {:ok, term()}
-  def handle_error_response(params, func) when is_function(func), do: handle_error_response(params, func.())
-  def handle_error_response(params, {:error, error}), do: {:error, change(error, params)}
-  def handle_error_response(_params, {:ok, _} = response), do: response
+    #{inspect(term, pretty: true)}
+    """
+  end
 end

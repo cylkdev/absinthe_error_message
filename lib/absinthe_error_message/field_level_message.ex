@@ -4,17 +4,13 @@ defmodule AbsintheErrorMessage.FieldLevelMessage do
   """
   alias AbsintheErrorMessage.Serializer
 
-  @type t :: %__MODULE__{
-    message: binary() | nil,
-    field: list(binary() | atom()) | nil
-  }
-
-  @type t_map :: %{
-    message: binary() | nil,
-    field: list(binary() | atom()) | nil
-  }
-
+  @type field :: list(binary() | atom())
+  @type message :: binary()
   @type attrs :: map() | keyword()
+
+  @type t :: %__MODULE__{message: message() | nil, field: field()}
+
+  @type t_map :: %{message: message() | nil, field: field() | nil}
 
   @enforce_keys [:message]
   defstruct @enforce_keys ++ [:field]
@@ -24,14 +20,14 @@ defmodule AbsintheErrorMessage.FieldLevelMessage do
 
   ### Examples
 
-      iex> AbsintheErrorMessage.FieldLevelMessage.create(message: "expected an string representation of an integer", field: ["input", "id"])
+      iex> AbsintheErrorMessage.FieldLevelMessage.create_struct(message: "expected an string representation of an integer", field: ["input", "id"])
       %AbsintheErrorMessage.FieldLevelMessage{
         message: "expected an string representation of an integer",
         field: ["input", "id"]
       }
   """
-  @spec create(attrs()) :: t()
-  def create(attrs), do: struct!(__MODULE__, attrs)
+  @spec create_struct(attrs()) :: t()
+  def create_struct(attrs), do: struct!(__MODULE__, attrs)
 
   @doc """
   Returns a struct.
@@ -45,7 +41,7 @@ defmodule AbsintheErrorMessage.FieldLevelMessage do
       }
   """
   @spec create(binary(), list()) :: t()
-  def create(message, field), do: create(message: message, field: field)
+  def create(message, field), do: create_struct(message: message, field: field)
 
   @doc """
   Returns a map with values that can be serialized to a string.
@@ -58,7 +54,7 @@ defmodule AbsintheErrorMessage.FieldLevelMessage do
         field: ["input", "id"]
       }
   """
-  @spec to_jsonable_map(list(t)) :: list(t_map())
+  @spec to_jsonable_map(list(t())) :: list(t_map())
   def to_jsonable_map(messages) when is_list(messages) do
     Enum.map(messages, &to_jsonable_map/1)
   end

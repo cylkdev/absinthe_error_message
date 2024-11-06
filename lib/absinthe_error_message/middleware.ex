@@ -1,9 +1,7 @@
 defmodule AbsintheErrorMessage.Middleware do
   @moduledoc """
-  Absinthe Error Message Resolution Middleware
-
-  This is a post-resolution middleware that converts application error messages
-  to client error messages.
+  A post-resolution middleware that converts errors
+  to graphql error messages.
 
   ## Usage
 
@@ -46,28 +44,29 @@ defmodule AbsintheErrorMessage.Middleware do
 
   """
   alias AbsintheErrorMessage.{
+    Config,
     FieldLevelMessage,
-    TopLevelMessage
+    TopLevelMessage,
+    Middleware.ErrorResolver
   }
 
+  @type errors :: list()
   @type error_message :: AbsintheErrorMessage.error_message()
   @type resolution :: Absinthe.Resolution.t()
+  @type field_level_message :: AbsintheErrorMessage.FieldLevelMessage.t()
   @type top_level_message :: AbsintheErrorMessage.TopLevelMessage.t()
+  @type opts :: keyword()
 
   @behaviour Absinthe.Middleware
 
-  @user_errors :user_errors
-  @match_any [:*]
+  @default_field_level_message_source :user_errors
 
   @impl Absinthe.Middleware
   @doc """
   Implementation for `c:Absinthe.Middleware.call/2`.
-
-  ### Examples
-
-      AbsintheErrorMessage.Middleware.call(%Absinthe.Resolution{})
   """
-  @spec call(Absinthe.Resolution.t(), Keyword.t()) :: Absinthe.Resolution.t()
+  @spec call(resolution :: resolution(), opts :: opts()) :: resolution()
+  @spec call(resolution :: resolution()) :: resolution()
   def call(
     %Absinthe.Resolution{
       state: :resolved,
@@ -76,85 +75,97 @@ defmodule AbsintheErrorMessage.Middleware do
     } = resolution,
     opts \\ []
   ) do
-    {
-      top_level_messages,
-      field_level_messages
-    } = reduce_to_messages(errors, resolution, opts)
+    case translate_errors(errors, resolution, opts) do
+      {field_messages, []} ->
+        field_messages = FieldLevelMessage.to_jsonable_map(field_messages)
 
-    case TopLevelMessage.to_jsonable_map(top_level_messages) do
-      [] -> %{resolution | errors: [], value: error_payload(value, field_level_messages, opts)}
-      errors -> %{resolution | errors: errors, value: nil}
+        value = error_payload(value, field_messages, opts)
+
+        %{resolution | value: value, errors: []}
+
+      {[], top_messages} ->
+        %{resolution | value: nil, errors: TopLevelMessage.to_jsonable_map(top_messages)}
+
     end
   end
 
   @doc false
-  @spec resolve(any(), Absinthe.Resolution.t(), keyword()) :: any()
-  def resolve(error, resolution, opts) do
-    case (opts[:resolve] || @match_any) do
-      func when is_function(func) ->
-        func.(error, resolution)
+  @spec translate_errors(
+    errors :: errors(),
+    resolution :: resolution(),
+    opts :: opts()
+  ) :: {list(field_level_message()), list(top_level_message())}
+  @spec translate_errors(
+    errors :: list(),
+    resolution :: Absinthe.Resolution.t()
+  ) :: {list(field_level_message()), list(top_level_message())}
+  def translate_errors(errors, resolution, opts \\ []) do
+    {field_messages, top_messages} = reduce_errors(errors, resolution, opts)
 
-      changeset ->
-        Enum.reduce(changeset, error, fn
-          {change_params, match_params, func}, error ->
-            AbsintheErrorMessage.change(error, change_params, match_params, fn error ->
-              func.(error, resolution)
-            end)
+    {Enum.reverse(field_messages), Enum.reverse(top_messages)}
+  end
 
-          {change_params, match_params}, error ->
-            AbsintheErrorMessage.change(error, change_params, match_params, fn error ->
-              AbsintheErrorMessage.Resolver.resolve(error, resolution, opts)
-            end)
+  defp reduce_errors(errors, resolution, opts) do
+    Enum.reduce(errors, {[], []}, &reduce_error(&1, resolution, &2, opts))
+  end
 
-          match_params, error ->
-            AbsintheErrorMessage.change(error, [], match_params, fn error ->
-              AbsintheErrorMessage.Resolver.resolve(error, resolution, opts)
-            end)
+  defp reduce_error(
+    %FieldLevelMessage{} = message,
+    _resolution,
+    {field_messages, top_messages},
+    _opts
+  ) do
+    {[message | field_messages], top_messages}
+  end
 
-        end)
-    end
+  defp reduce_error(
+    %TopLevelMessage{} = message,
+    _resolution,
+    {field_messages, top_messages},
+    _opts
+  ) do
+    {field_messages, [message | top_messages]}
+  end
+
+  defp reduce_error(error, resolution, acc, opts) do
+    error
+    |> ErrorResolver.convert_to_message(resolution, opts)
+    |> merge_messages(acc)
+  end
+
+  defp merge_messages(errors, {field_messages, top_messages}) do
+    Enum.reduce(errors, {field_messages, top_messages}, fn
+      %FieldLevelMessage{} = message, {field_messages, top_messages} -> {[message | field_messages], top_messages}
+      %TopLevelMessage{} = message, {field_messages, top_messages} -> {field_messages, [message | top_messages]}
+      term, _acc -> raise_invalid_message!(term)
+    end)
   end
 
   defp error_payload(value, [], _opts), do: value
   defp error_payload(value, messages, opts) do
+    key = field_level_message_source!(opts)
     value = if value, do: value, else: %{}
-    field_level_message_key = opts[:field_level_message_key] || @user_errors
 
-    messages = FieldLevelMessage.to_jsonable_map(messages)
-
-    Map.put(value, field_level_message_key, messages)
+    Map.put(value, key, messages)
   end
 
-  defp maybe_resolve(%module{} = message, _resolution, _opts)
-    when module in [TopLevelMessage, FieldLevelMessage] do
-    message
+  defp raise_invalid_message!(term) do
+    raise """
+    Expected one of:
+
+    * `AbsintheErrorMessage.TopLevelMessage` struct
+    * `AbsintheErrorMessage.FieldLevelMessage` struct
+
+    got:
+
+    #{inspect(term, pretty: true)}
+    """
   end
 
-  defp maybe_resolve(error, resolution, opts) do
-    resolve(error, resolution, opts)
-  end
-
-  defp reduce_to_messages(errors, resolution, opts) when is_list(errors) do
-    {top_level_messages, field_level_messages} =
-      errors
-      |> Enum.map(fn error -> maybe_resolve(error, resolution, opts) end)
-      |> Enum.reduce({[], []}, &reduce_message/2)
-
-    top_level_messages = Enum.reverse(top_level_messages)
-    field_level_messages = Enum.reverse(field_level_messages)
-
-    {top_level_messages, field_level_messages}
-  end
-
-  defp reduce_message(%TopLevelMessage{} = message, {top_level_messages, field_level_messages}) do
-    {[message | top_level_messages], field_level_messages}
-  end
-
-  defp reduce_message(%FieldLevelMessage{} = message, {top_level_messages, field_level_messages}) do
-    {top_level_messages, [message | field_level_messages]}
-  end
-
-  defp reduce_message(term, _) do
-    raise "Expected a `TopLevelMessage` or `FieldLevelMessage` struct, got: #{inspect(term)}"
+  defp field_level_message_source!(opts) do
+    with nil <- opts[:field_level_message_source],
+      nil <- Config.field_level_message_source() do
+      @default_field_level_message_source
+    end
   end
 end

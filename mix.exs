@@ -6,6 +6,7 @@ defmodule AbsintheErrorMessage.MixProject do
       app: :absinthe_error_message,
       version: "0.1.0",
       elixir: "~> 1.14",
+      elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       description: "Standardize absinthe error message handling in your application",
@@ -31,22 +32,27 @@ defmodule AbsintheErrorMessage.MixProject do
     ]
   end
 
+  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(_), do: ["lib"]
+
   # Run "mix help compile.app" to learn about applications.
   def application do
-    [
-      extra_applications: [:logger]
-    ]
+    [extra_applications: [:logger]]
   end
 
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:ex_doc, "~> 0.1 or ~> 0.2", only: :dev, runtime: false},
-      {:excoveralls, "~> 0.14.6", only: :test, runtime: false},
-      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
+      {:ex_doc, "~> 0.1", runtime: false},
+      {:excoveralls, "~> 0.14.0", runtime: false},
+      {:dialyxir, "~> 1.0", runtime: false},
+      {:credo, "~> 1.0", runtime: false},
+      {:absinthe, "~> 1.0"},
 
-      {:error_message_shorts, git: "https://github.com/cylkdev/error_message_shorts.git", branch: "main"},
-      {:absinthe, "~> 1.0"}
+      {:error_message_shorts, path: "../error_message_shorts"},
+      {:ecto, "~> 3.0", optional: true},
+      {:error_message, "~> 0.3.2", optional: true}
+      # {:error_message_shorts, git: "https://github.com/cylkdev/error_message_shorts.git", branch: "main"},
     ]
   end
 
